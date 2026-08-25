@@ -22,8 +22,10 @@ resource "aws_cloudwatch_log_group" "price_alert" {
 
 # Sin dependencias de terceros (solo stdlib + boto3, que ya viene en el
 # runtime de Lambda) para no necesitar un paso de build/pip - el zip de
-# archive_file alcanza. Timeout alto (no 30s): barre ~12 fechas por ruta,
-# una llamada HTTP secuencial a SerpApi por cada una.
+# archive_file alcanza. Timeout alto: barre ~12 fechas por ruta con 2
+# llamadas one-way cada una (~24), mas hasta 8 llamadas extra si busca
+# combos self-transfer para acortar escalas largas - hasta ~32 llamadas
+# HTTP secuenciales a SerpApi por ruta.
 resource "aws_lambda_function" "flight_price_check" {
   function_name    = "${var.project_name}-flight-price-check"
   role             = aws_iam_role.flight_price_check_lambda.arn
@@ -31,7 +33,7 @@ resource "aws_lambda_function" "flight_price_check" {
   runtime          = "python3.13"
   filename         = data.archive_file.flight_price_check.output_path
   source_code_hash = data.archive_file.flight_price_check.output_base64sha256
-  timeout          = 300
+  timeout          = 600
 
   environment {
     variables = {

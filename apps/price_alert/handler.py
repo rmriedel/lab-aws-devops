@@ -27,6 +27,7 @@ TABLE_STYLE = (
 TH_STYLE = "text-align:left;border-bottom:2px solid #333;padding:4px 8px;"
 TD_STYLE = "border-bottom:1px solid #ddd;padding:4px 8px;"
 LAYOVER_STYLE = "padding:2px 8px;color:#666;font-style:italic;background:#f7f7f7;"
+WARNING_STYLE = "padding:4px 8px;color:#b45309;font-size:12px;background:#fff7ed;"
 
 
 def _deserialize(dynamodb_json):
@@ -67,6 +68,13 @@ def _leg_rows(label, leg):
                 f"Escala en {lay.get('airport', '?')}: {_fmt_duration(lay.get('duration_minutes'))}"
                 f"</td></tr>"
             )
+    if leg.get("self_transfer"):
+        rows.append(
+            f"<tr><td></td><td colspan='6' style='{WARNING_STYLE}'>"
+            f"&#9888; Tickets separados (aerolíneas distintas combinadas): si el primer vuelo se "
+            f"demora, la segunda aerolínea no está obligada a esperarte ni reacomodarte."
+            f"</td></tr>"
+        )
     return "".join(rows)
 
 

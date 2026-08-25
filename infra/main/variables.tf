@@ -25,7 +25,12 @@ variable "log_retention_days" {
 }
 
 variable "alert_email" {
-  description = "Email que manda y recibe las alertas de baja de precio via SES (misma dirección en ambos lados para no salir del sandbox de SES). Requiere confirmación manual post-apply (click al mail de verificación de SES)."
+  description = "Email DESTINATARIO real de las alertas (donde se leen) - requiere confirmación manual post-apply (click al mail de verificación de SES)."
+  type        = string
+}
+
+variable "alert_from_email" {
+  description = "Email REMITENTE de las alertas en un dominio propio (ej. alertas_precio@rodrigo-riedel.ar). Requiere verificar el dominio completo en SES vía infra/cloudflare (ver ses.tf) antes de que el envío funcione."
   type        = string
 }
 

@@ -85,9 +85,11 @@ data "aws_iam_policy_document" "price_alert_lambda_permissions" {
   }
 
   statement {
-    sid       = "SendAlertEmail"
-    actions   = ["ses:SendEmail", "ses:SendRawEmail"]
-    resources = [aws_ses_email_identity.alert.arn]
+    sid     = "SendAlertEmail"
+    actions = ["ses:SendEmail", "ses:SendRawEmail"]
+    # email.alert: destinatario verificado (sandbox). domain.alert_domain:
+    # remitente - el Lambda manda "como" esa identidad de dominio.
+    resources = [aws_ses_email_identity.alert.arn, aws_ses_domain_identity.alert_domain.arn]
   }
 }
 

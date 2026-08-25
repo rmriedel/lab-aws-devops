@@ -1,8 +1,9 @@
 # Copiar a terraform.tfvars (gitignored) y completar con valores reales.
 
-github_repo     = "tu-usuario/lab-aws-devops"
-alert_email     = "vos@ejemplo.com"
-serpapi_api_key = "tu-api-key-de-serpapi.com"
+github_repo      = "tu-usuario/lab-aws-devops"
+alert_email      = "vos@ejemplo.com"
+alert_from_email = "alertas@tu-dominio.com"
+serpapi_api_key  = "tu-api-key-de-serpapi.com"
 
 # Opcionales - estos son los defaults:
 # aws_region                 = "us-east-1"

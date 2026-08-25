@@ -19,31 +19,32 @@ flowchart TD
 
     FP -->|DynamoDB Streams| L2["Lambda<br/>price-alert"]
     WR --> L2
-    L2 -->|"SES SendEmail (HTML)"| Mail["📧 Email"]
+    L2 -->|"SES SendEmail (HTML)<br/>alertas_precio@rodrigo-riedel.ar"| Mail["📧 Email<br/>(reenviado por Cloudflare<br/>al Gmail real)"]
 ```
 
 Sin VPC, sin ECS, sin NAT Gateway — un solo Lambda hace llamadas HTTPS salientes a `serpapi.com`. Costo estimado: SerpApi Free tier (250 búsquedas/mes) cubre una ruta con barrido diario completo; agregar rutas suma unos pocos dólares/mes como mucho (`$2` cada 1000 búsquedas extra).
 
 ## Infra (`infra/`)
 
-Tres raíces de OpenTofu independientes, cada una con su propio estado:
+Cuatro raíces de OpenTofu independientes, cada una con su propio estado:
 
 | Directorio | Qué hace |
 |---|---|
 | `infra/bootstrap/` | Se aplica una sola vez, a mano. Crea el bucket S3 + tabla DynamoDB que usa el backend remoto de `infra/main`. |
-| `infra/main/` | La infra real: IAM, las dos tablas DynamoDB, el bucket S3 de raw data, la identidad SES para las alertas, la API key de SerpApi en Secrets Manager, los dos Lambdas, y el scheduler de EventBridge. |
+| `infra/main/` | La infra real: IAM, las dos tablas DynamoDB, el bucket S3 de raw data, las identidades SES (destinatario + dominio remitente), la API key de SerpApi en Secrets Manager, los dos Lambdas, y el scheduler de EventBridge. |
 | `infra/github/` | Gestiona el propio repo de GitHub como recurso, separado de la infra de AWS. |
+| `infra/cloudflare/` | DNS + Email Routing de `rodrigo-riedel.ar` (dominio propio del remitente de las alertas). Lee los outputs de SES de `infra/main` vía remote state — nada se copia a mano entre los dos roots. |
 
 ### Cómo desplegar
 
 ```bash
 cd infra/main
 tofu init
-tofu plan   -var="alert_email=..." -var="github_repo=..." -var="serpapi_api_key=..."
-tofu apply  -var="alert_email=..." -var="github_repo=..." -var="serpapi_api_key=..."
+tofu plan   -var="alert_email=..." -var="alert_from_email=..." -var="github_repo=..." -var="serpapi_api_key=..."
+tofu apply  -var="alert_email=..." -var="alert_from_email=..." -var="github_repo=..." -var="serpapi_api_key=..."
 ```
 
-El schedule arranca en `DISABLED` a propósito — no corre nada automático hasta validar el pipeline a mano. Más detalle operativo (invocar manualmente, agregar rutas) está en [`CLAUDE.md`](./CLAUDE.md).
+El schedule arranca en `DISABLED` a propósito — no corre nada automático hasta validar el pipeline a mano. Más detalle operativo (invocar manualmente, agregar rutas, el orden de apply de `infra/cloudflare`) está en [`CLAUDE.md`](./CLAUDE.md).
 
 ## Apps (`apps/`)
 
@@ -51,6 +52,8 @@ El schedule arranca en `DISABLED` a propósito — no corre nada automático has
 - **`price_alert/`** — Lambda disparado por el stream de DynamoDB de `flight_prices` (agrupa varias rutas de la misma corrida en un solo mail). Compara cada precio nuevo contra el `target_price` de esa ruta en `watched_routes` y manda un mail HTML por SES si está por debajo, con una tabla por ruta (ida y vuelta, vuelos, escalas y su duración), ordenadas por ruta → aerolínea → precio, con aviso cuando el itinerario combina tickets separados.
 
 `watched_routes` (DynamoDB) se administra directo con `aws dynamodb put-item` — agregar o sacar una ruta, o ajustar el rango de fechas por ruta, no requiere redeploy.
+
+Las alertas salen desde `alertas_precio@rodrigo-riedel.ar` (dominio propio, delegado a Cloudflare) en vez del Gmail del usuario. Cloudflare Email Routing reenvía lo que llegue a esa dirección hacia el Gmail real. Dos pasos de esa parte quedaron manuales por limitaciones reales del provider de Cloudflare (un bug y un 403 persistente en un endpoint puntual) — el detalle está en `infra/cloudflare/email_routing.tf` y en [`CLAUDE.md`](./CLAUDE.md).
 
 ## Historial
 

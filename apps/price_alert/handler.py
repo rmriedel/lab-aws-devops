@@ -5,9 +5,10 @@ todas juntas, en tabla, ordenadas por ruta / aerolinea / precio total - en
 vez de un mail suelto (y en texto plano) por cada ruta.
 
 SNS no soporta HTML en el cuerpo del mail (solo texto plano) - por eso SES en
-vez de un topico SNS. Se manda de ALERT_EMAIL a ALERT_EMAIL (mismo valor en
-los dos lados), asi alcanza con verificar una sola identidad en el sandbox de
-SES, sin pedir salida de sandbox.
+vez de un topico SNS. Remitente y destinatario son direcciones distintas
+(ALERT_FROM_EMAIL en un dominio propio, ALERT_TO_EMAIL el Gmail real donde
+se lee) - ambas identidades verificadas en SES (ver infra/main/ses.tf), asi
+que sigue sin hacer falta pedir salida del sandbox.
 """
 import os
 
@@ -19,7 +20,8 @@ ses = boto3.client("ses")
 deserializer = TypeDeserializer()
 
 WATCHED_ROUTES_TABLE = os.environ["WATCHED_ROUTES_TABLE"]
-ALERT_EMAIL = os.environ["ALERT_EMAIL"]
+ALERT_FROM_EMAIL = os.environ["ALERT_FROM_EMAIL"]
+ALERT_TO_EMAIL = os.environ["ALERT_TO_EMAIL"]
 
 TABLE_STYLE = (
     "border-collapse:collapse;width:100%;margin:8px 0 20px;font-family:sans-serif;font-size:14px;"
@@ -137,8 +139,8 @@ def lambda_handler(event, context):
     html_body = f"<html><body>{sections}</body></html>"
 
     ses.send_email(
-        Source=ALERT_EMAIL,
-        Destination={"ToAddresses": [ALERT_EMAIL]},
+        Source=ALERT_FROM_EMAIL,
+        Destination={"ToAddresses": [ALERT_TO_EMAIL]},
         Message={
             "Subject": {"Data": subject, "Charset": "UTF-8"},
             "Body": {"Html": {"Data": html_body, "Charset": "UTF-8"}},

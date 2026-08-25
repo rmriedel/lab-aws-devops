@@ -59,7 +59,8 @@ resource "aws_lambda_function" "price_alert" {
   environment {
     variables = {
       WATCHED_ROUTES_TABLE = aws_dynamodb_table.watched_routes.name
-      ALERT_EMAIL          = var.alert_email
+      ALERT_FROM_EMAIL     = var.alert_from_email
+      ALERT_TO_EMAIL       = var.alert_email
     }
   }
 

@@ -25,7 +25,7 @@ variable "log_retention_days" {
 }
 
 variable "alert_email" {
-  description = "Email que recibe las alertas de baja de precio (suscripción SNS, requiere confirmación manual post-apply)"
+  description = "Email que manda y recibe las alertas de baja de precio via SES (misma dirección en ambos lados para no salir del sandbox de SES). Requiere confirmación manual post-apply (click al mail de verificación de SES)."
   type        = string
 }
 

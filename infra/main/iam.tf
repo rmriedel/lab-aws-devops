@@ -85,9 +85,9 @@ data "aws_iam_policy_document" "price_alert_lambda_permissions" {
   }
 
   statement {
-    sid       = "PublishAlert"
-    actions   = ["sns:Publish"]
-    resources = [aws_sns_topic.price_alerts.arn]
+    sid       = "SendAlertEmail"
+    actions   = ["ses:SendEmail", "ses:SendRawEmail"]
+    resources = [aws_ses_email_identity.alert.arn]
   }
 }
 

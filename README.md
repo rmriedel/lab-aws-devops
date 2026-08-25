@@ -19,8 +19,7 @@ flowchart TD
 
     FP -->|DynamoDB Streams| L2["Lambda<br/>price-alert"]
     WR --> L2
-    L2 --> SNS["SNS Topic"]
-    SNS --> Mail["📧 Email"]
+    L2 -->|"SES SendEmail (HTML)"| Mail["📧 Email"]
 ```
 
 Sin VPC, sin ECS, sin NAT Gateway — un solo Lambda hace llamadas HTTPS salientes a `serpapi.com`. Costo estimado: SerpApi Free tier (250 búsquedas/mes) cubre una ruta con barrido diario completo; agregar rutas suma unos pocos dólares/mes como mucho (`$2` cada 1000 búsquedas extra).
@@ -32,7 +31,7 @@ Tres raíces de OpenTofu independientes, cada una con su propio estado:
 | Directorio | Qué hace |
 |---|---|
 | `infra/bootstrap/` | Se aplica una sola vez, a mano. Crea el bucket S3 + tabla DynamoDB que usa el backend remoto de `infra/main`. |
-| `infra/main/` | La infra real: IAM, las dos tablas DynamoDB, el bucket S3 de raw data, el tópico SNS, la API key de SerpApi en Secrets Manager, los dos Lambdas, y el scheduler de EventBridge. |
+| `infra/main/` | La infra real: IAM, las dos tablas DynamoDB, el bucket S3 de raw data, la identidad SES para las alertas, la API key de SerpApi en Secrets Manager, los dos Lambdas, y el scheduler de EventBridge. |
 | `infra/github/` | Gestiona el propio repo de GitHub como recurso, separado de la infra de AWS. |
 
 ### Cómo desplegar
@@ -48,8 +47,8 @@ El schedule arranca en `DISABLED` a propósito — no corre nada automático has
 
 ## Apps (`apps/`)
 
-- **`flight_price_check/`** — Lambda en Python, solo stdlib + `boto3`. Por cada ruta activa, barre una grilla de fechas de ida (no cada día — un paso configurable) contra el motor `google_flights` de SerpApi, con `type=1` (ida y vuelta) para que el precio ya venga total con impuestos. Prioriza vuelos directos cuando existen, si no usa el más barato en general.
-- **`price_alert/`** — Lambda disparado por el stream de DynamoDB de `flight_prices`. Compara cada precio nuevo contra el `target_price` de esa ruta en `watched_routes` y manda un mail por SNS si está por debajo.
+- **`flight_price_check/`** — Lambda en Python, solo stdlib + `boto3`. Por cada ruta activa, barre una grilla de fechas de ida (no cada día — un paso configurable) contra el motor `google_flights` de SerpApi, con `type=1` (ida y vuelta) para que el precio ya venga total con impuestos. Prioriza vuelos directos cuando existen, si no usa el más barato en general. Una vez elegido el ganador, hace una llamada extra para traer el detalle completo del tramo de vuelta (horarios, escalas y su duración).
+- **`price_alert/`** — Lambda disparado por el stream de DynamoDB de `flight_prices` (agrupa varias rutas de la misma corrida en un solo mail). Compara cada precio nuevo contra el `target_price` de esa ruta en `watched_routes` y manda un mail HTML por SES si está por debajo, con una tabla por ruta (ida y vuelta, vuelos, escalas y su duración), ordenadas por ruta → aerolínea → precio.
 
 `watched_routes` (DynamoDB) se administra directo con `aws dynamodb put-item` — agregar o sacar una ruta, o ajustar el rango de fechas por ruta, no requiere redeploy.
 

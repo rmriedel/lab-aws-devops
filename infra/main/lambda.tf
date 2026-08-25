@@ -57,16 +57,20 @@ resource "aws_lambda_function" "price_alert" {
   environment {
     variables = {
       WATCHED_ROUTES_TABLE = aws_dynamodb_table.watched_routes.name
-      SNS_TOPIC_ARN        = aws_sns_topic.price_alerts.arn
+      ALERT_EMAIL          = var.alert_email
     }
   }
 
   depends_on = [aws_cloudwatch_log_group.price_alert]
 }
 
+# batch_size > 1 + ventana de batching: si flight_price_check escribe varias
+# rutas en la misma corrida, price_alert las recibe juntas en una sola
+# invocacion y manda UN mail con todas en vez de uno por ruta.
 resource "aws_lambda_event_source_mapping" "flight_prices_stream" {
-  event_source_arn  = aws_dynamodb_table.flight_prices.stream_arn
-  function_name     = aws_lambda_function.price_alert.arn
-  starting_position = "LATEST"
-  batch_size        = 1
+  event_source_arn                   = aws_dynamodb_table.flight_prices.stream_arn
+  function_name                      = aws_lambda_function.price_alert.arn
+  starting_position                  = "LATEST"
+  batch_size                         = 20
+  maximum_batching_window_in_seconds = 30
 }

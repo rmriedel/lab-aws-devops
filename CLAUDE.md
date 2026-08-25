@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A personal DevOps lab, budget-capped at ~$20/month, that periodically checks flight prices for user-defined routes (e.g. Mendoza→Bariloche) across airlines and emails an alert when the best price found drops below a target. Infrastructure is OpenTofu (not Terraform CLI — use the `tofu` binary); comments/descriptions in the code are written in Spanish, match that when editing existing files.
 
-**Current status (2026-08-25): active, validated end-to-end.** The first version queried each airline's website directly; neither offers a public API and both restrict automated access, so it was replaced with **SerpApi's `google_flights` engine** (an official, documented, paid API over Google Flights) — a single query already returns both airlines for a route. Validated live against the real API on 2026-08-25 (MDZ→BRC, real ARS prices, real DynamoDB write, real SNS email delivered).
+**Current status (2026-08-25): active, validated end-to-end.** The first version queried each airline's website directly; neither offers a public API and both restrict automated access, so it was replaced with **SerpApi's `google_flights` engine** (an official, documented, paid API over Google Flights) — a single query already returns both airlines for a route. Validated live against the real API on 2026-08-25 (MDZ→BRC, real ARS prices, real DynamoDB write, real alert email delivered).
 
 The old per-airline Lambdas and the VPC/ECS/ECR infra they needed are gone. One Lambda, `apps/flight_price_check/`, now handles both airlines.
 
@@ -24,7 +24,7 @@ EventBridge Scheduler (1 schedule, rate(1 day) default)
         DynamoDB flight_prices (stream: NEW_IMAGE)
                         │
                         ▼
-        Lambda price-alert → SNS → email   (apps/price_alert/)
+        Lambda price-alert → SES → email (HTML)   (apps/price_alert/)
 ```
 
 `watched_routes` DynamoDB table (hash key `route_id`) holds `origin`/`destination`/`target_price`/`active`, plus optional per-route search-grid overrides: `search_window_days` (default 60), `stay_nights` (default 7), `date_step_days` (default 5). No VPC, no NAT Gateway, no ECS — everything is a plain Lambda making outbound HTTPS calls to `serpapi.com`.
@@ -34,15 +34,15 @@ EventBridge Scheduler (1 schedule, rate(1 day) default)
 Each directory under `infra/` is an independent root module with its own state. Always `cd` into the specific directory before running `tofu` commands.
 
 - **`infra/bootstrap/`** — Applied once, manually, with local state. Creates the S3 bucket + DynamoDB table the `infra/main` remote backend depends on. Already applied for this repo (backend values are in `infra/main/backend.tf`).
-- **`infra/main/`** — The actual lab infrastructure: IAM (`iam.tf`), DynamoDB tables (`dynamodb.tf`), raw-response S3 landing zone (`s3.tf`), SNS alerts topic (`sns.tf`), the SerpApi API key in Secrets Manager (`secrets.tf`), both Lambdas (`lambda.tf`), and the EventBridge Scheduler wiring (`scheduler.tf`).
+- **`infra/main/`** — The actual lab infrastructure: IAM (`iam.tf`), DynamoDB tables (`dynamodb.tf`), raw-response S3 landing zone (`s3.tf`), the SES email identity for alerts (`ses.tf`), the SerpApi API key in Secrets Manager (`secrets.tf`), both Lambdas (`lambda.tf`), and the EventBridge Scheduler wiring (`scheduler.tf`).
 - **`infra/github/`** — Manages the GitHub repository resource itself, separate from AWS infra.
 
 ## Application code — `apps/`
 
-- **`apps/flight_price_check/handler.py`** — Lambda, stdlib-only (`urllib.request`) + `boto3` (already in the Lambda runtime, no build step). For each active route, sweeps a fixed-step grid of candidate outbound dates (not every single day — see `SEARCH_WINDOW_DAYS_DEFAULT`/`DATE_STEP_DAYS_DEFAULT` at the top of the file), one `type=1` (round trip) SerpApi call per date pair, and tracks the cheapest itinerary overall plus the cheapest one whose outbound leg is nonstop (`is_direct`). Writes one `flight_prices` item per route per run with the winner. Dumps every raw SerpApi response from the sweep to S3 (`serpapi/{route_id}/{scraped_at}.json`) regardless of success, for debugging. **Known simplification**: "directo" is judged from the outbound leg only (checking the return leg would require a second SerpApi call via `departure_token`, which isn't needed since the first call's `price` is already the full round-trip total) — documented in the file's docstring, not a bug.
-- **`apps/price_alert/handler.py`** — Lambda triggered by the `flight_prices` DynamoDB stream, compares against `watched_routes.target_price`, publishes to SNS. Airline-agnostic — reads whatever `airline`/`price`/`currency`/`outbound_date`/`return_date`/`stops`/`is_direct` fields are on the stream record. Validated end-to-end 2026-08-25 (real alert delivered by email).
+- **`apps/flight_price_check/handler.py`** — Lambda, stdlib-only (`urllib.request`) + `boto3` (already in the Lambda runtime, no build step). For each active route, sweeps a fixed-step grid of candidate outbound dates (not every single day — see `SEARCH_WINDOW_DAYS_DEFAULT`/`DATE_STEP_DAYS_DEFAULT` at the top of the file), one `type=1` (round trip) SerpApi call per date pair, and tracks the cheapest itinerary overall plus the cheapest one whose outbound leg is nonstop (`is_direct`) — that "directo" judgment during the sweep is outbound-leg-only, on purpose, to keep the sweep at one call per date pair. Once a winner is picked, **one extra SerpApi call** (`departure_token`) fetches the real return-leg detail (segments, times, layovers) — not per swept date, just once per route per run, so the cost stays negligible. Writes one `flight_prices` item per route per run with `outbound`/`return` each holding `segments` (airline, flight number, times, duration) and `layovers` (airport, duration). Dumps every raw SerpApi response from the sweep to S3 (`serpapi/{route_id}/{scraped_at}.json`) regardless of success, for debugging.
+- **`apps/price_alert/handler.py`** — Lambda triggered by the `flight_prices` DynamoDB stream (batched: `batch_size=20`, `maximum_batching_window_in_seconds=30`, so multiple routes alerting in the same run land in one email instead of several). Compares each record against `watched_routes.target_price`, and for everything below target, sends **one HTML email via SES** (not SNS — SNS can't render HTML, only plain text) with a table per route (ordered route → airline → price) showing both legs' flights and layover durations. Airline-agnostic — reads whatever fields are on the stream record. Validated end-to-end 2026-08-25 (real alert delivered by email, plain-text version; HTML/SES version updated same day per user request, not yet re-validated live — verify after next apply).
 
-The SerpApi API key lives in Secrets Manager (`aws_secretsmanager_secret.serpapi_api_key`), never as a plain env var or in any tracked file — the Lambda fetches it once per warm execution environment via `secretsmanager:GetSecretValue`.
+The SerpApi API key lives in Secrets Manager (`aws_secretsmanager_secret.serpapi_api_key`), never as a plain env var or in any tracked file — the Lambda fetches it once per warm execution environment via `secretsmanager:GetSecretValue`. The SES identity (`aws_ses_email_identity.alert` in `ses.tf`) sends from `alert_email` to that same `alert_email` — deliberate, so a single verified identity is enough to stay inside the SES sandbox (no need to request production access for a single-recipient personal alert).
 
 ## Commands
 
@@ -77,7 +77,7 @@ Takes ~1-2 minutes (sweeps ~12 SerpApi calls sequentially per route) — the Lam
 
 - Resource names/tags are prefixed with `var.project_name` (default `devops-lab`).
 - `infra/main` sets `default_tags` (`Project`, `ManagedBy = "opentofu"`) at the provider level — don't re-add these tags per-resource.
-- SNS email subscriptions need a manual click-to-confirm from the inbox after apply — Terraform can't complete that step.
+- The SES email identity needs a manual click-to-verify from the inbox after apply — Terraform can't complete that step.
 - The GitHub Actions deploy IAM role trust policy restricts `sub` to `repo:${var.github_repo}:ref:refs/heads/main` — any new workflow triggers need a corresponding condition update in `infra/main/iam.tf`.
 - `.gitignore` excludes `*.tfvars` except `terraform.tfvars.example` — keep the example file in sync with `variables.tf`.
 - SerpApi Free plan: 250 searches/month, no card required. At the default daily-sweep schedule (~12 calls/route/day), 1 route stays within the free tier; each additional route adds a few hundred calls/month at $2/1000 — trivial against the ~$20/month budget ceiling.

@@ -8,33 +8,10 @@ variable "project_name" {
   default = "devops-lab"
 }
 
-variable "app_port" {
-  description = "Puerto en el que escucha la app dentro del contenedor"
-  type        = number
-  default     = 8080
-}
-
-variable "my_ip_cidr" {
-  description = "Tu IP pública en formato CIDR (ej: 200.10.20.30/32)."
+variable "serpapi_api_key" {
+  description = "API key de SerpApi (serpapi.com) para consultar el motor google_flights. Sensible - no tiene default, se pasa por terraform.tfvars (gitignored)."
   type        = string
-}
-
-variable "fargate_cpu" {
-  description = "vCPU units. 256 = 0.25 vCPU (el mínimo de Fargate)"
-  type        = number
-  default     = 256
-}
-
-variable "fargate_memory" {
-  description = "MB de memoria. 512 = mínimo compatible con 256 CPU"
-  type        = number
-  default     = 512
-}
-
-variable "desired_count" {
-  description = "Cuántas tasks corren. Poné 0 para 'apagar' el servicio sin destruir infra."
-  type        = number
-  default     = 1
+  sensitive   = true
 }
 
 variable "github_repo" {
@@ -45,4 +22,21 @@ variable "github_repo" {
 variable "log_retention_days" {
   type    = number
   default = 3
+}
+
+variable "alert_email" {
+  description = "Email que recibe las alertas de baja de precio (suscripción SNS, requiere confirmación manual post-apply)"
+  type        = string
+}
+
+variable "scrape_schedule_expression" {
+  description = "Expresión de EventBridge Scheduler para el chequeo de precios. Cada corrida ya barre un rango de fechas completo, no hace falta alta frecuencia."
+  type        = string
+  default     = "rate(1 day)"
+}
+
+variable "price_drop_check_enabled" {
+  description = "ENABLED/DISABLED - interruptor general del schedule. Arranca en DISABLED hasta validar el pipeline a mano."
+  type        = string
+  default     = "DISABLED"
 }

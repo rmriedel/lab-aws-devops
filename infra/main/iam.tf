@@ -1,26 +1,113 @@
-data "aws_iam_policy_document" "ecs_task_assume" {
+# Permisos de datos para el Lambda de flight_price_check: leer rutas
+# vigiladas, escribir precios, guardar la respuesta cruda de SerpApi en S3
+# para poder debuggear cuando algo se rompa.
+data "aws_iam_policy_document" "scraper_data_access" {
+  statement {
+    sid       = "ScanWatchedRoutes"
+    actions   = ["dynamodb:Scan"]
+    resources = [aws_dynamodb_table.watched_routes.arn]
+  }
+
+  statement {
+    sid       = "WriteFlightPrices"
+    actions   = ["dynamodb:PutItem"]
+    resources = [aws_dynamodb_table.flight_prices.arn]
+  }
+
+  statement {
+    sid       = "PutRawScrape"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.scrape_raw.arn}/*"]
+  }
+}
+
+data "aws_iam_policy_document" "lambda_assume" {
   statement {
     actions = ["sts:AssumeRole"]
     principals {
       type        = "Service"
-      identifiers = ["ecs-tasks.amazonaws.com"]
+      identifiers = ["lambda.amazonaws.com"]
     }
   }
 }
 
-resource "aws_iam_role" "ecs_task_execution" {
-  name               = "${var.project_name}-ecs-task-execution"
-  assume_role_policy = data.aws_iam_policy_document.ecs_task_assume.json
+resource "aws_iam_role" "flight_price_check_lambda" {
+  name               = "${var.project_name}-flight-price-check-lambda"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
 }
 
-resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
-  role       = aws_iam_role.ecs_task_execution.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+resource "aws_iam_role_policy" "flight_price_check_lambda_data_access" {
+  name   = "${var.project_name}-flight-price-check-lambda-data-access"
+  role   = aws_iam_role.flight_price_check_lambda.id
+  policy = data.aws_iam_policy_document.scraper_data_access.json
 }
 
-resource "aws_iam_role" "ecs_task" {
-  name               = "${var.project_name}-ecs-task"
-  assume_role_policy = data.aws_iam_policy_document.ecs_task_assume.json
+data "aws_iam_policy_document" "flight_price_check_lambda_extra" {
+  statement {
+    actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+    resources = ["${aws_cloudwatch_log_group.flight_price_check.arn}:*"]
+  }
+
+  statement {
+    sid       = "ReadSerpApiSecret"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [aws_secretsmanager_secret.serpapi_api_key.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "flight_price_check_lambda_extra" {
+  name   = "${var.project_name}-flight-price-check-lambda-extra"
+  role   = aws_iam_role.flight_price_check_lambda.id
+  policy = data.aws_iam_policy_document.flight_price_check_lambda_extra.json
+}
+
+resource "aws_iam_role" "price_alert_lambda" {
+  name               = "${var.project_name}-price-alert-lambda"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
+}
+
+data "aws_iam_policy_document" "price_alert_lambda_permissions" {
+  statement {
+    sid = "ReadFlightPricesStream"
+    actions = [
+      "dynamodb:GetRecords",
+      "dynamodb:GetShardIterator",
+      "dynamodb:DescribeStream",
+      "dynamodb:ListStreams",
+    ]
+    resources = [aws_dynamodb_table.flight_prices.stream_arn]
+  }
+
+  statement {
+    sid       = "ReadWatchedRoutes"
+    actions   = ["dynamodb:GetItem"]
+    resources = [aws_dynamodb_table.watched_routes.arn]
+  }
+
+  statement {
+    sid       = "PublishAlert"
+    actions   = ["sns:Publish"]
+    resources = [aws_sns_topic.price_alerts.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "price_alert_lambda_permissions" {
+  name   = "${var.project_name}-price-alert-lambda-policy"
+  role   = aws_iam_role.price_alert_lambda.id
+  policy = data.aws_iam_policy_document.price_alert_lambda_permissions.json
+}
+
+data "aws_iam_policy_document" "price_alert_lambda_logs" {
+  statement {
+    actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+    resources = ["${aws_cloudwatch_log_group.price_alert.arn}:*"]
+  }
+}
+
+resource "aws_iam_role_policy" "price_alert_lambda_logs" {
+  name   = "${var.project_name}-price-alert-lambda-logs"
+  role   = aws_iam_role.price_alert_lambda.id
+  policy = data.aws_iam_policy_document.price_alert_lambda_logs.json
 }
 
 data "tls_certificate" "github" {
@@ -60,40 +147,16 @@ resource "aws_iam_role" "github_actions_deploy" {
 
 data "aws_iam_policy_document" "github_actions_deploy" {
   statement {
-    sid       = "ECRAuth"
-    actions   = ["ecr:GetAuthorizationToken"]
-    resources = ["*"]
-  }
-
-  statement {
-    sid = "ECRPush"
+    sid = "LambdaDeploy"
     actions = [
-      "ecr:BatchCheckLayerAvailability",
-      "ecr:PutImage",
-      "ecr:InitiateLayerUpload",
-      "ecr:UploadLayerPart",
-      "ecr:CompleteLayerUpload",
-      "ecr:BatchGetImage",
-      "ecr:GetDownloadUrlForLayer",
+      "lambda:UpdateFunctionCode",
+      "lambda:UpdateFunctionConfiguration",
+      "lambda:GetFunction",
     ]
-    resources = [aws_ecr_repository.app.arn]
-  }
-
-  statement {
-    sid = "ECSDeploy"
-    actions = [
-      "ecs:UpdateService",
-      "ecs:DescribeServices",
-      "ecs:DescribeTaskDefinition",
-      "ecs:RegisterTaskDefinition",
+    resources = [
+      aws_lambda_function.flight_price_check.arn,
+      aws_lambda_function.price_alert.arn,
     ]
-    resources = ["*"]
-  }
-
-  statement {
-    sid       = "PassRoles"
-    actions   = ["iam:PassRole"]
-    resources = [aws_iam_role.ecs_task_execution.arn, aws_iam_role.ecs_task.arn]
   }
 }
 

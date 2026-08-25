@@ -1,0 +1,12 @@
+# Copiar a terraform.tfvars (gitignored) y completar con valores reales.
+
+github_repo     = "tu-usuario/lab-aws-devops"
+alert_email     = "vos@ejemplo.com"
+serpapi_api_key = "tu-api-key-de-serpapi.com"
+
+# Opcionales - estos son los defaults:
+# aws_region                 = "us-east-1"
+# project_name                = "devops-lab"
+# scrape_schedule_expression = "rate(1 day)"
+# price_drop_check_enabled   = "DISABLED"
+# log_retention_days          = 3

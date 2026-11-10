@@ -19,6 +19,12 @@ variable "github_repo" {
   type        = string
 }
 
+variable "github_oidc_sub_prefix" {
+  description = "Prefijo del claim sub OIDC con immutable subject (ej. repo:usuario@123/repo@456) - sale de `gh api repos/<owner>/<repo>/actions/oidc/customization/sub` (sub_claim_prefix). Vacio = formato clasico repo:<github_repo>. Cambia si el repo se borra y se recrea."
+  type        = string
+  default     = ""
+}
+
 variable "log_retention_days" {
   type    = number
   default = 3

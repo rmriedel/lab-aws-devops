@@ -122,6 +122,15 @@ resource "aws_iam_openid_connect_provider" "github" {
   thumbprint_list = [data.tls_certificate.github.certificates[0].sha1_fingerprint]
 }
 
+# Formato del claim `sub` del token OIDC de GitHub Actions. Los repos con
+# "immutable subject" (default en repos nuevos) mandan
+# repo:<owner>@<owner_id>/<repo>@<repo_id> en vez de repo:<owner>/<repo>: asi
+# un repo recreado o con el mismo nombre en otra cuenta no puede asumir el rol.
+# Valor exacto: gh api repos/<owner>/<repo>/actions/oidc/customization/sub
+locals {
+  github_oidc_sub_prefix = var.github_oidc_sub_prefix != "" ? var.github_oidc_sub_prefix : "repo:${var.github_repo}"
+}
+
 data "aws_iam_policy_document" "github_actions_assume" {
   statement {
     actions = ["sts:AssumeRoleWithWebIdentity"]
@@ -137,7 +146,7 @@ data "aws_iam_policy_document" "github_actions_assume" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/main"]
+      values   = ["${local.github_oidc_sub_prefix}:ref:refs/heads/main"]
     }
   }
 }

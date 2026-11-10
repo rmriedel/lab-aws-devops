@@ -5,6 +5,10 @@ alert_email      = "vos@ejemplo.com"
 alert_from_email = "alertas@tu-dominio.com"
 serpapi_api_key  = "tu-api-key-de-serpapi.com"
 
+# Si el repo usa "immutable subject" para OIDC (default en repos nuevos):
+# gh api repos/<owner>/<repo>/actions/oidc/customization/sub  -> sub_claim_prefix
+# github_oidc_sub_prefix = "repo:tu-usuario@123/lab-aws-devops@456"
+
 # Opcionales - estos son los defaults:
 # aws_region                 = "us-east-1"
 # project_name                = "devops-lab"

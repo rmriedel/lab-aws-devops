@@ -2,6 +2,7 @@ resource "github_repository" "lab" {
   name        = var.repo_name
   description = "Lab DevOps en AWS: monitor de precios de vuelos con Lambda, DynamoDB y SES - OpenTofu + GitHub Actions (OIDC)"
   visibility  = var.repo_visibility
+  topics      = ["aws", "opentofu", "github-actions", "serverless", "devops", "aws-lambda", "dynamodb", "infrastructure-as-code"]
 
   auto_init = false
 

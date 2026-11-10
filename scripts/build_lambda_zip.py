@@ -1,8 +1,11 @@
 """
 Arma el zip de un Lambda de apps/ de forma DETERMINISTICA: orden de archivos,
-fecha y permisos fijos. Mismo codigo => mismos bytes => mismo CodeSha256 en
-Lambda, lo que deja al job deploy de CI saltear el update cuando no hay
-cambios reales.
+fecha y permisos fijos, y SIN compresion (ZIP_STORED) - la salida de deflate
+depende de la version de zlib, asi que comprimir daba hashes distintos entre
+la maquina local y el runner de CI. Son pocos KB, no hace falta comprimir.
+
+Mismo codigo => mismos bytes => mismo CodeSha256 en Lambda, en cualquier
+maquina: el job deploy de CI saltea el update cuando no hay cambios reales.
 
 Uso: python scripts/build_lambda_zip.py apps/price_alert /tmp/price_alert.zip
 Imprime el sha256 en base64 (el mismo formato que Lambda.CodeSha256).
@@ -22,11 +25,11 @@ def build(src_dir: Path, out_path: Path) -> str:
         p for p in src_dir.rglob("*")
         if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc"
     )
-    with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_STORED) as zf:
         for path in files:
             info = zipfile.ZipInfo(path.relative_to(src_dir).as_posix(), date_time=FIXED_DATE)
             info.external_attr = FILE_MODE << 16
-            info.compress_type = zipfile.ZIP_DEFLATED
+            info.compress_type = zipfile.ZIP_STORED
             zf.writestr(info, path.read_bytes())
     return base64.b64encode(hashlib.sha256(out_path.read_bytes()).digest()).decode()
 

@@ -67,7 +67,7 @@ flowchart LR
 ```
 
 - **CI** (cada PR y push): lint con `ruff`, tests unitarios con `pytest` (`tests/`, sin llamar a AWS ni a SerpApi — todo con fakes), y `tofu fmt -check` + `tofu validate` en las cuatro raíces de `infra/` (con `-backend=false`, sin credenciales).
-- **CD** (solo push a `main`, y solo si CI pasó): GitHub Actions asume el rol `devops-lab-gha-deploy` por **OIDC** — no hay access keys guardadas en GitHub — y actualiza el código de los dos Lambdas. El zip es determinístico (`scripts/build_lambda_zip.py`), así que si el `CodeSha256` ya coincide con el desplegado, no redeploya. Después del update verifica que el hash desplegado sea el del commit.
+- **CD** (push a `main` o ejecución manual sobre `main`, y solo si CI pasó): GitHub Actions asume el rol `devops-lab-gha-deploy` por **OIDC** — no hay access keys guardadas en GitHub — y actualiza el código de los dos Lambdas. El zip es determinístico (`scripts/build_lambda_zip.py`), así que si el `CodeSha256` ya coincide con el desplegado, no redeploya. Después del update verifica que el hash desplegado sea el del commit.
 - La **infra** (IAM, tablas, schedule, SES…) sigue aplicándose a mano con `tofu apply`: el rol de CI solo tiene permisos sobre el código de los Lambdas, a propósito.
 
 Setup único: crear la variable de repo `AWS_DEPLOY_ROLE_ARN` con el valor de `tofu output -raw github_actions_deploy_role_arn` (desde `infra/main`).

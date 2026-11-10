@@ -87,7 +87,9 @@ jobs:
   deploy:
     name: deploy (${{ matrix.app }})
     needs: [python, tofu]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # push a main o "Run workflow" manual sobre main - nunca en PRs. En ambos
+    # casos el claim sub del token OIDC es ref:refs/heads/main.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read

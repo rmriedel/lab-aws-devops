@@ -51,7 +51,7 @@ Single workflow, three jobs: `python` (ruff + pytest on `tests/`) and `tofu` (ma
 
 - CI only deploys **Lambda code**. Infra changes still go through a manual `tofu apply` — the deploy role is deliberately scoped to `lambda:UpdateFunctionCode`/`UpdateFunctionConfiguration`/`GetFunction` on the two functions.
 - The deploy job must NOT use `environment:` — that changes the OIDC `sub` claim to `repo:...:environment:<name>` and the trust policy (which only allows `ref:refs/heads/main`) would reject it.
-- CI's zip and OpenTofu's `archive_file` zip differ byte-wise, so after a `tofu apply` that redeploys code, the next CI run redeploys the same code once — harmless. Since tofu only compares `source_code_hash` against its own state, CI deploys don't cause tofu drift.
+- **Lambda code is owned by CI, config by OpenTofu.** Both `aws_lambda_function`s have `lifecycle { ignore_changes = [filename, source_code_hash] }`: `archive_file` only supplies the initial zip at creation; after that, code changes reach AWS only through the pipeline. To push code without CI (e.g. CI broken), build with `scripts/build_lambda_zip.py` and `aws lambda update-function-code` by hand — `tofu apply` will NOT do it.
 - Tests load each `handler.py` by path under distinct module names (`tests/conftest.py`) because both files share the same name; env vars the handlers read at import time are set to dummies there.
 
 ## Commands

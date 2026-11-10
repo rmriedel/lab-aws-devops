@@ -44,6 +44,14 @@ resource "aws_lambda_function" "flight_price_check" {
     }
   }
 
+  # El codigo lo despliega CI (.github/workflows/ci-cd.yml, job deploy) - tofu
+  # solo sube el zip inicial al crear la funcion y despues maneja la config.
+  # Sin esto, tofu y CI se pisarian: los zips difieren byte a byte y cada
+  # apply re-subiria el codigo.
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
+  }
+
   depends_on = [aws_cloudwatch_log_group.flight_price_check]
 }
 
@@ -62,6 +70,11 @@ resource "aws_lambda_function" "price_alert" {
       ALERT_FROM_EMAIL     = var.alert_from_email
       ALERT_TO_EMAIL       = var.alert_email
     }
+  }
+
+  # Codigo desplegado por CI, ver flight_price_check arriba.
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
   }
 
   depends_on = [aws_cloudwatch_log_group.price_alert]

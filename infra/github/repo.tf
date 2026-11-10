@@ -1,6 +1,6 @@
 resource "github_repository" "lab" {
   name        = var.repo_name
-  description = "Lab DevOps: OpenTofu + GitHub Actions + FastAPI en Fargate"
+  description = "Lab DevOps en AWS: monitor de precios de vuelos con Lambda, DynamoDB y SES - OpenTofu + GitHub Actions (OIDC)"
   visibility  = var.repo_visibility
 
   auto_init = false

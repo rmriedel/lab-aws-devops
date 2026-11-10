@@ -1,9 +1,9 @@
 """
 Lambda periodico: para cada ruta activa en watched_routes, barre una grilla
 de fechas de ida (grid fijo, no cada dia) contra la API de SerpApi
-(motor google_flights, API oficial sobre Google Flights) y guarda en flight_prices
-el mejor precio ida y vuelta encontrado en todo el rango, con el detalle
-completo de vuelos/escalas de ambos tramos.
+(motor google_flights, API oficial sobre Google Flights) y guarda en
+flight_prices el mejor precio ida y vuelta encontrado en todo el rango, con el
+detalle completo de vuelos/escalas de ambos tramos.
 
 Una sola consulta a Google Flights ya trae ambas aerolineas (AR y JetSmart)
 (confirmado en vivo el 25/08 contra MDZ-BRC).

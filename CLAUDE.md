@@ -45,6 +45,15 @@ Each directory under `infra/` is an independent root module with its own state. 
 
 The SerpApi API key lives in Secrets Manager (`aws_secretsmanager_secret.serpapi_api_key`), never as a plain env var or in any tracked file — the Lambda fetches it once per warm execution environment via `secretsmanager:GetSecretValue`. SES has two identities: `aws_ses_email_identity.alert` (the recipient, `var.alert_email`, a Gmail address — still needed while SES is in sandbox, since the recipient must be verified) and `aws_ses_domain_identity.alert_domain` (the sender's domain, derived from `var.alert_from_email`, e.g. `alertas_precio@rodrigo-riedel.ar`) + its DKIM. Both being verified keeps everything inside the SES sandbox — no production access request needed.
 
+## CI/CD — `.github/workflows/ci-cd.yml`
+
+Single workflow, three jobs: `python` (ruff + pytest on `tests/`) and `tofu` (matrix over the 4 roots: `fmt -check` + `init -backend=false` + `validate`) run on every PR/push with no AWS credentials; `deploy` (matrix over both Lambdas) runs only on push to `main` after both pass. Deploy assumes `aws_iam_role.github_actions_deploy` via OIDC (role ARN comes from the repo variable `AWS_DEPLOY_ROLE_ARN` = `tofu output -raw github_actions_deploy_role_arn`), builds a deterministic zip with `scripts/build_lambda_zip.py`, skips if it matches the live `CodeSha256`, else `update-function-code` + waits + verifies the hash.
+
+- CI only deploys **Lambda code**. Infra changes still go through a manual `tofu apply` — the deploy role is deliberately scoped to `lambda:UpdateFunctionCode`/`UpdateFunctionConfiguration`/`GetFunction` on the two functions.
+- The deploy job must NOT use `environment:` — that changes the OIDC `sub` claim to `repo:...:environment:<name>` and the trust policy (which only allows `ref:refs/heads/main`) would reject it.
+- CI's zip and OpenTofu's `archive_file` zip differ byte-wise, so after a `tofu apply` that redeploys code, the next CI run redeploys the same code once — harmless. Since tofu only compares `source_code_hash` against its own state, CI deploys don't cause tofu drift.
+- Tests load each `handler.py` by path under distinct module names (`tests/conftest.py`) because both files share the same name; env vars the handlers read at import time are set to dummies there.
+
 ## Commands
 
 Run from within the relevant `infra/<dir>`:
@@ -75,6 +84,8 @@ aws lambda invoke --function-name devops-lab-flight-price-check /dev/stdout
 Can take several minutes (up to ~32 SerpApi calls sequentially per route: the date sweep plus any self-transfer combo search) — the Lambda timeout is 600s to give it room.
 
 ## Conventions
+
+- **The repo is public.** No personal data in tracked files (real email addresses, account IDs, tokens) — those go in gitignored `terraform.tfvars`, which is why `forward_to_email` (`infra/cloudflare`) and `alert_email` (`infra/main`) have no defaults. Keep docs about past data sources neutral: describe *that* a source was dropped and why at a high level, not access-control specifics.
 
 - Resource names/tags are prefixed with `var.project_name` (default `devops-lab`).
 - `infra/main` sets `default_tags` (`Project`, `ManagedBy = "opentofu"`) at the provider level — don't re-add these tags per-resource.

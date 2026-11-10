@@ -55,6 +55,30 @@ El schedule arranca en `DISABLED` a propósito — no corre nada automático has
 
 Las alertas salen desde `alertas_precio@rodrigo-riedel.ar` (dominio propio, delegado a Cloudflare) en vez del Gmail del usuario. Cloudflare Email Routing reenvía lo que llegue a esa dirección hacia el Gmail real. Dos pasos de esa parte quedaron manuales por limitaciones reales del provider de Cloudflare (un bug y un 403 persistente en un endpoint puntual) — el detalle está en `infra/cloudflare/email_routing.tf` y en [`CLAUDE.md`](./CLAUDE.md).
 
+## CI/CD (`.github/workflows/ci-cd.yml`)
+
+```mermaid
+flowchart LR
+    T["PR / push"] --> PY["python<br/>ruff + pytest"]
+    T --> TF["tofu × 4 roots<br/>fmt + validate"]
+    PY --> D{"push a main?"}
+    TF --> D
+    D -->|sí| DEP["deploy × 2 Lambdas<br/>OIDC → update-function-code"]
+```
+
+- **CI** (cada PR y push): lint con `ruff`, tests unitarios con `pytest` (`tests/`, sin llamar a AWS ni a SerpApi — todo con fakes), y `tofu fmt -check` + `tofu validate` en las cuatro raíces de `infra/` (con `-backend=false`, sin credenciales).
+- **CD** (solo push a `main`, y solo si CI pasó): GitHub Actions asume el rol `devops-lab-gha-deploy` por **OIDC** — no hay access keys guardadas en GitHub — y actualiza el código de los dos Lambdas. El zip es determinístico (`scripts/build_lambda_zip.py`), así que si el `CodeSha256` ya coincide con el desplegado, no redeploya. Después del update verifica que el hash desplegado sea el del commit.
+- La **infra** (IAM, tablas, schedule, SES…) sigue aplicándose a mano con `tofu apply`: el rol de CI solo tiene permisos sobre el código de los Lambdas, a propósito.
+
+Setup único: crear la variable de repo `AWS_DEPLOY_ROLE_ARN` con el valor de `tofu output -raw github_actions_deploy_role_arn` (desde `infra/main`).
+
+Tests en local:
+
+```bash
+python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/ruff check . && .venv/bin/pytest
+```
+
 ## Historial
 
 La primera versión consultaba directamente los sitios web de cada aerolínea. Esos sitios no ofrecen una API pública y restringen el acceso automatizado, así que en lugar de depender de ellos se pasó a una fuente de datos con API oficial y documentada.

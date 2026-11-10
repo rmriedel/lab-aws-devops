@@ -1,8 +1,8 @@
 # Copiar a terraform.tfvars (gitignored) y completar con el token real.
 
 cloudflare_api_token = "tu-api-token-de-cloudflare"
+forward_to_email     = "tu-mail-real@example.com"
 
 # Opcionales - estos son los defaults:
 # domain           = "rodrigo-riedel.ar"
 # alert_local_part = "alertas_precio"
-# forward_to_email = "tu-mail-real@example.com"

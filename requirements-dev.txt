@@ -1,0 +1,5 @@
+# Dependencias para CI / tests locales. NO van en el zip de los Lambdas:
+# boto3 ya viene en el runtime de Lambda, el resto es solo tooling.
+boto3
+pytest
+ruff

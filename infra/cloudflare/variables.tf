@@ -17,6 +17,6 @@ variable "alert_local_part" {
 }
 
 variable "forward_to_email" {
-  description = "A donde reenvia Cloudflare Email Routing lo que llegue a <alert_local_part>@<domain> - el Gmail real donde se lee todo."
+  description = "A donde reenvia Cloudflare Email Routing lo que llegue a <alert_local_part>@<domain> - el mail real donde se lee todo. Sin default a proposito (dato personal, repo publico) - se pasa por terraform.tfvars (gitignored)."
   type        = string
 }

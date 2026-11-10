@@ -1,0 +1,14 @@
+# Solo config de tooling (ruff + pytest) - los Lambdas no se empaquetan como
+# paquete Python, cada carpeta de apps/ se zipea tal cual (ver infra/main/lambda.tf
+# y el job deploy de .github/workflows/ci-cd.yml).
+
+[tool.ruff]
+target-version = "py313"  # mismo runtime que los Lambdas
+line-length = 140
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: orden de imports, B: bugbear.
+select = ["E", "F", "W", "I", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

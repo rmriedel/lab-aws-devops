@@ -1,0 +1,161 @@
+# Pipeline del lab:
+#
+#   PR / push ──► python (ruff + pytest) ──┐
+#             └─► tofu (fmt + validate) ───┴─► deploy (solo push a main)
+#
+# - CI corre en cada PR y push, sin credenciales de AWS.
+# - CD (job deploy) solo en push a main: asume el rol OIDC
+#   devops-lab-gha-deploy (infra/main/iam.tf) - sin access keys guardadas en
+#   GitHub - y actualiza el codigo de los dos Lambdas. El trust policy del rol
+#   solo acepta `ref:refs/heads/main`, por eso deploy no usa `environment:`
+#   (cambiaria el claim `sub` del token OIDC y el AssumeRole fallaria).
+# - La infra (IAM, tablas, schedule...) se sigue aplicando a mano con
+#   `tofu apply` - el rol de deploy solo tiene permisos sobre el codigo de los
+#   Lambdas, a proposito.
+#
+# Requiere la variable de repo AWS_DEPLOY_ROLE_ARN
+# (Settings → Secrets and variables → Actions → Variables), valor:
+#   cd infra/main && tofu output -raw github_actions_deploy_role_arn
+
+name: ci-cd
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  # En PRs, un push nuevo cancela la corrida vieja. En main nunca se cancela
+  # un deploy a mitad de camino.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  python:
+    name: python (lint + tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13" # mismo runtime que los Lambdas
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - run: pip install -r requirements-dev.txt
+
+      - name: ruff
+        run: ruff check --output-format=github .
+
+      - name: pytest
+        run: pytest -v
+
+  tofu:
+    name: tofu (${{ matrix.root }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        root: [bootstrap, main, github, cloudflare]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_wrapper: false
+
+      - name: fmt
+        run: tofu fmt -check -diff -recursive
+        working-directory: infra/${{ matrix.root }}
+
+      # -backend=false: valida sintaxis/tipos/referencias sin tocar el state
+      # remoto, asi que no hacen falta credenciales de AWS.
+      - name: validate
+        working-directory: infra/${{ matrix.root }}
+        run: |
+          tofu init -backend=false -input=false
+          tofu validate
+
+  deploy:
+    name: deploy (${{ matrix.app }})
+    needs: [python, tofu]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # para pedir el token OIDC que se cambia por credenciales de AWS
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: flight_price_check
+            function: devops-lab-flight-price-check
+          - app: price_alert
+            function: devops-lab-price-alert
+    env:
+      FUNCTION_NAME: ${{ matrix.function }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: chequear configuracion
+        env:
+          ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          if [ -z "$ROLE_ARN" ]; then
+            echo "::error::Falta la variable de repo AWS_DEPLOY_ROLE_ARN (ver comentario al principio de ci-cd.yml)"
+            exit 1
+          fi
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-${{ github.run_id }}-${{ matrix.app }}
+
+      # Zip deterministico (ver scripts/build_lambda_zip.py): mismo codigo =>
+      # mismo CodeSha256, asi se puede saltear el deploy cuando el Lambda ya
+      # tiene exactamente este codigo.
+      - name: build zip
+        run: |
+          LOCAL_SHA=$(python3 scripts/build_lambda_zip.py "apps/${{ matrix.app }}" "$RUNNER_TEMP/lambda.zip")
+          echo "LOCAL_SHA=$LOCAL_SHA" >> "$GITHUB_ENV"
+          unzip -l "$RUNNER_TEMP/lambda.zip"
+
+      - name: deploy
+        run: |
+          REMOTE_SHA=$(aws lambda get-function --function-name "$FUNCTION_NAME" --query Configuration.CodeSha256 --output text)
+          echo "local:  $LOCAL_SHA"
+          echo "remoto: $REMOTE_SHA"
+
+          if [ "$LOCAL_SHA" = "$REMOTE_SHA" ]; then
+            echo "Sin cambios de codigo, no se redeploya."
+            echo "### \`$FUNCTION_NAME\`: sin cambios" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          aws lambda update-function-code \
+            --function-name "$FUNCTION_NAME" \
+            --zip-file "fileb://$RUNNER_TEMP/lambda.zip" \
+            --query '{Version: Version, LastUpdateStatus: LastUpdateStatus}' --output table
+
+          aws lambda wait function-updated-v2 --function-name "$FUNCTION_NAME"
+
+          DEPLOYED_SHA=$(aws lambda get-function --function-name "$FUNCTION_NAME" --query Configuration.CodeSha256 --output text)
+          if [ "$DEPLOYED_SHA" != "$LOCAL_SHA" ]; then
+            echo "::error::CodeSha256 desplegado ($DEPLOYED_SHA) no coincide con el zip local ($LOCAL_SHA)"
+            exit 1
+          fi
+
+          {
+            echo "### \`$FUNCTION_NAME\`: desplegado ✅"
+            echo "- commit: \`${GITHUB_SHA::7}\`"
+            echo "- CodeSha256: \`$DEPLOYED_SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"

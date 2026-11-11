@@ -86,3 +86,7 @@ python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 La primera versión consultaba directamente los sitios web de cada aerolínea. Esos sitios no ofrecen una API pública y restringen el acceso automatizado, así que en lugar de depender de ellos se pasó a una fuente de datos con API oficial y documentada.
 
 Se investigaron varias alternativas antes de elegir SerpApi: Duffel (cubre AR pero no JetSmart), Amadeus (excluye LCCs explícitamente), Kiwi Tequila (alta por invitación), Travelpayouts (pide 50.000 usuarios activos/mes), Despegar (API B2B de partners, sin pricing público, onboarding comercial), Skyscanner (acceso solo vía aprobación de partner), e Ignav (self-serve y barato, pero se descartó por no revelar su fuente de datos y no tener ninguna huella pública independiente). SerpApi ganó por ser self-serve, con API documentada y pricing transparente, y porque una sola consulta a Google Flights ya trae ambas aerolíneas.
+
+## Licencia
+
+[MIT](./LICENSE)

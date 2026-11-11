@@ -160,8 +160,8 @@ data "aws_iam_policy_document" "github_actions_deploy" {
   statement {
     sid = "LambdaDeploy"
     actions = [
+      # Minimo que usa el job deploy: subir codigo y leer CodeSha256/estado.
       "lambda:UpdateFunctionCode",
-      "lambda:UpdateFunctionConfiguration",
       "lambda:GetFunction",
     ]
     resources = [

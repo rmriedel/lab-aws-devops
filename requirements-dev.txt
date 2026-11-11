@@ -1,5 +1,6 @@
 # Dependencias para CI / tests locales. NO van en el zip de los Lambdas:
 # boto3 ya viene en el runtime de Lambda, el resto es solo tooling.
-boto3
-pytest
-ruff
+# Versiones fijas para que CI sea reproducible - Dependabot las actualiza.
+boto3==1.44.0
+pytest==9.2.0
+ruff==0.17.4

@@ -10,6 +10,7 @@ vez de un topico SNS. Remitente y destinatario son direcciones distintas
 se lee) - ambas identidades verificadas en SES (ver infra/main/ses.tf), asi
 que sigue sin hacer falta pedir salida del sandbox.
 """
+import html
 import os
 
 import boto3
@@ -32,6 +33,12 @@ LAYOVER_STYLE = "padding:2px 8px;color:#666;font-style:italic;background:#f7f7f7
 WARNING_STYLE = "padding:4px 8px;color:#b45309;font-size:12px;background:#fff7ed;"
 
 
+def _e(value):
+    """Escapa para HTML: los datos de vuelos vienen de una API externa
+    (SerpApi), no se meten crudos en el cuerpo del mail."""
+    return html.escape(str(value))
+
+
 def _deserialize(dynamodb_json):
     return {k: deserializer.deserialize(v) for k, v in dynamodb_json.items()}
 
@@ -46,7 +53,7 @@ def _fmt_duration(minutes):
 
 def _leg_rows(label, leg):
     if not leg:
-        return f"<tr><td style='{TD_STYLE}'>{label}</td><td colspan='6' style='{TD_STYLE}'><em>sin detalle</em></td></tr>"
+        return f"<tr><td style='{TD_STYLE}'>{_e(label)}</td><td colspan='6' style='{TD_STYLE}'><em>sin detalle</em></td></tr>"
 
     segments = leg.get("segments", [])
     layovers = leg.get("layovers", [])
@@ -54,12 +61,12 @@ def _leg_rows(label, leg):
     for i, seg in enumerate(segments):
         rows.append(
             f"<tr>"
-            f"<td style='{TD_STYLE}'>{label if i == 0 else ''}</td>"
-            f"<td style='{TD_STYLE}'>{seg.get('airline', '?')} {seg.get('flight_number', '')}</td>"
-            f"<td style='{TD_STYLE}'>{seg.get('from', '?')}</td>"
-            f"<td style='{TD_STYLE}'>{seg.get('departure_time', '?')}</td>"
-            f"<td style='{TD_STYLE}'>{seg.get('to', '?')}</td>"
-            f"<td style='{TD_STYLE}'>{seg.get('arrival_time', '?')}</td>"
+            f"<td style='{TD_STYLE}'>{_e(label) if i == 0 else ''}</td>"
+            f"<td style='{TD_STYLE}'>{_e(seg.get('airline', '?'))} {_e(seg.get('flight_number', ''))}</td>"
+            f"<td style='{TD_STYLE}'>{_e(seg.get('from', '?'))}</td>"
+            f"<td style='{TD_STYLE}'>{_e(seg.get('departure_time', '?'))}</td>"
+            f"<td style='{TD_STYLE}'>{_e(seg.get('to', '?'))}</td>"
+            f"<td style='{TD_STYLE}'>{_e(seg.get('arrival_time', '?'))}</td>"
             f"<td style='{TD_STYLE}'>{_fmt_duration(seg.get('duration_minutes'))}</td>"
             f"</tr>"
         )
@@ -67,7 +74,7 @@ def _leg_rows(label, leg):
             lay = layovers[i]
             rows.append(
                 f"<tr><td></td><td colspan='6' style='{LAYOVER_STYLE}'>"
-                f"Escala en {lay.get('airport', '?')}: {_fmt_duration(lay.get('duration_minutes'))}"
+                f"Escala en {_e(lay.get('airport', '?'))}: {_fmt_duration(lay.get('duration_minutes'))}"
                 f"</td></tr>"
             )
     if leg.get("self_transfer"):
@@ -81,18 +88,22 @@ def _leg_rows(label, leg):
 
 
 def _route_section_html(item, target_price):
-    currency = item.get("currency", "ARS")
-    origin = item.get("origin", "?")
-    destination = item.get("destination", "?")
-    airline = item.get("airline", "?")
+    # Todo lo que viene del item se escapa una vez aca, antes de armar el HTML.
+    route_id = _e(item["route_id"])
+    currency = _e(item.get("currency", "ARS"))
+    origin = _e(item.get("origin", "?"))
+    destination = _e(item.get("destination", "?"))
+    airline = _e(item.get("airline", "?"))
+    price = _e(item["price"])
+    target = _e(target_price)
 
     rows = _leg_rows("Ida", item.get("outbound"))
     rows += _leg_rows("Vuelta", item.get("return"))
 
     return f"""
-    <h2 style="margin:24px 0 4px;font-family:sans-serif;">{item['route_id']}: {origin} &rarr; {destination} &middot; {airline}</h2>
+    <h2 style="margin:24px 0 4px;font-family:sans-serif;">{route_id}: {origin} &rarr; {destination} &middot; {airline}</h2>
     <p style="font-family:sans-serif;margin:0 0 8px;">
-      <strong>Total: {item['price']} {currency}</strong> (objetivo: {target_price} {currency})
+      <strong>Total: {price} {currency}</strong> (objetivo: {target} {currency})
     </p>
     <table style="{TABLE_STYLE}">
       <tr>

@@ -109,3 +109,10 @@ def test_avisa_tickets_separados(price_alert, fakes):
     html = fakes.sent[0]["Message"]["Body"]["Html"]["Data"]
     assert fakes.sent[0]["Message"]["Subject"]["Data"] == "Bajo de precio: MDZ-BRC"
     assert "Tickets separados" in html
+
+
+def test_escapa_datos_externos_en_el_html(price_alert, fakes):
+    price_alert.lambda_handler({"Records": [_stream_record("MDZ-BRC", 150000, airline="<script>x</script>")]}, None)
+    html = fakes.sent[0]["Message"]["Body"]["Html"]["Data"]
+    assert "<script>" not in html
+    assert "&lt;script&gt;x&lt;/script&gt;" in html

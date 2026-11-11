@@ -1,5 +1,7 @@
 # Flight Price Watcher
 
+[![ci-cd](https://github.com/rmriedel/lab-aws-devops/actions/workflows/ci-cd.yml/badge.svg?branch=main)](https://github.com/rmriedel/lab-aws-devops/actions/workflows/ci-cd.yml)
+
 Lab personal de DevOps con presupuesto acotado (~$20 USD/mes): infraestructura en AWS armada con [OpenTofu](https://opentofu.org/) para chequear periódicamente precios de vuelos ida y vuelta en rutas elegidas por el usuario (ej. Mendoza→Bariloche), y avisar por mail cuando el mejor precio encontrado baja de un objetivo.
 
 > **Estado actual: activo, validado de punta a punta.** Los precios se obtienen de la API de [SerpApi](https://serpapi.com/) (motor `google_flights`), que trae ambas aerolíneas (Aerolíneas Argentinas y JetSmart) en una sola consulta (ver [Historial](#historial)).

@@ -13,6 +13,9 @@
 #   `tofu apply` - el rol de deploy solo tiene permisos sobre el codigo de los
 #   Lambdas, a proposito.
 #
+# Las actions estan fijadas por SHA de commit (no por tag, que se puede mover)
+# y .github/dependabot.yml las mantiene actualizadas.
+#
 # Requiere la variable de repo AWS_DEPLOY_ROLE_ARN
 # (Settings → Secrets and variables → Actions → Variables), valor:
 #   cd infra/main && tofu output -raw github_actions_deploy_role_arn
@@ -42,9 +45,9 @@ jobs:
     name: python (lint + tests)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13" # mismo runtime que los Lambdas
           cache: pip
@@ -66,9 +69,9 @@ jobs:
       matrix:
         root: [bootstrap, main, github, cloudflare]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: opentofu/setup-opentofu@v2
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
         with:
           tofu_wrapper: false
 
@@ -105,7 +108,7 @@ jobs:
     env:
       FUNCTION_NAME: ${{ matrix.function }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: chequear configuracion
         env:
@@ -116,7 +119,7 @@ jobs:
             exit 1
           fi
 
-      - uses: aws-actions/configure-aws-credentials@v6
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}

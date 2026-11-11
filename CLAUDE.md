@@ -15,7 +15,7 @@ The old per-airline Lambdas and the VPC/ECS/ECR infra they needed are gone. One 
 ## Architecture
 
 ```
-EventBridge Scheduler (1 schedule, rate(1 day) default)
+EventBridge Scheduler (1 schedule, rate(4 days) default)
         └──► Lambda flight-price-check (apps/flight_price_check/)
                         │  sweeps a grid of (outbound_date, return_date) pairs
                         │  per route against SerpApi's google_flights engine,
@@ -94,4 +94,4 @@ Can take several minutes (up to ~32 SerpApi calls sequentially per route: the da
 - SPF/DMARC records are out of scope on purpose — Cloudflare Email Routing and SES each want their own TXT at the domain apex, and declaring both blindly in Terraform risks clobbering one with the other. Revisit only if alerts start landing in spam.
 - The GitHub Actions deploy IAM role trust policy restricts `sub` to `<prefix>:ref:refs/heads/main`, where `<prefix>` is `var.github_oidc_sub_prefix` if set, else `repo:${var.github_repo}`. The repo uses GitHub's **immutable OIDC subject** (`repo:owner@<owner_id>/repo@<repo_id>`, default for new repos) — the prefix comes from `gh api repos/<owner>/<repo>/actions/oidc/customization/sub` and **changes if the repo is ever deleted and recreated**; a mismatch shows up as `Not authorized to perform sts:AssumeRoleWithWebIdentity` in the deploy job — any new workflow triggers need a corresponding condition update in `infra/main/iam.tf`.
 - `.gitignore` excludes `*.tfvars` except `terraform.tfvars.example` — keep the example file in sync with `variables.tf`.
-- SerpApi Free plan: 250 searches/month, no card required. At the default daily-sweep schedule (~13-32 calls/route/day depending on how often self-transfer combos get searched), 1 route runs a few hundred calls/month over the free tier at $2/1000 — a dollar or two per route per month, trivial against the ~$20/month budget ceiling.
+- SerpApi pricing (checked 2026-11-11 on serpapi.com/pricing): Free plan = 250 searches/month; **there is no per-search overage billing** — the next tier is Starter, $25/month for 1000 searches. Each run costs ~13-32 calls/route (depending on how often self-transfer combos get searched). That is why `scrape_schedule_expression` defaults to `rate(4 days)`: 1 route ≈ 100-240 searches/month, inside the free tier. A daily schedule would be ~400-960/month — over the free tier, and Starter would exceed the ~$20/month budget ceiling. Adding routes means spacing runs further or shrinking the date grid.

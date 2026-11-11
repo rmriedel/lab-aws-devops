@@ -41,9 +41,9 @@ variable "alert_from_email" {
 }
 
 variable "scrape_schedule_expression" {
-  description = "Expresión de EventBridge Scheduler para el chequeo de precios. Cada corrida ya barre un rango de fechas completo, no hace falta alta frecuencia."
+  description = "Expresión de EventBridge Scheduler para el chequeo de precios. Cada corrida ya barre un rango de fechas completo, no hace falta alta frecuencia. Cada 4 días mantiene una ruta dentro del plan gratis de SerpApi (250 búsquedas/mes)."
   type        = string
-  default     = "rate(1 day)"
+  default     = "rate(4 days)"
 }
 
 variable "price_drop_check_enabled" {

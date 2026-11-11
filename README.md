@@ -10,7 +10,7 @@ Lab personal de DevOps con presupuesto acotado (~$20 USD/mes): infraestructura e
 
 ```mermaid
 flowchart TD
-    EB["EventBridge Scheduler<br/>1 schedule · rate(1 day)"]
+    EB["EventBridge Scheduler<br/>1 schedule · rate(4 days)"]
     EB --> L1["Lambda<br/>flight-price-check"]
 
     WR[("DynamoDB<br/>watched_routes")] --> L1
@@ -24,7 +24,7 @@ flowchart TD
     L2 -->|"SES SendEmail (HTML)<br/>alertas_precio@rodrigo-riedel.ar"| Mail["📧 Email<br/>(reenviado por Cloudflare<br/>al Gmail real)"]
 ```
 
-Sin VPC, sin ECS, sin NAT Gateway — un solo Lambda hace llamadas HTTPS salientes a `serpapi.com`. Costo estimado: SerpApi Free tier (250 búsquedas/mes) cubre una ruta con barrido diario completo; agregar rutas suma unos pocos dólares/mes como mucho (`$2` cada 1000 búsquedas extra).
+Sin VPC, sin ECS, sin NAT Gateway — un solo Lambda hace llamadas HTTPS salientes a `serpapi.com`. Costo estimado: cada corrida hace entre 13 y 32 consultas a SerpApi por ruta. Con el schedule por defecto (cada 4 días) son unas 100 a 240 búsquedas por mes, dentro del plan gratis de 250. Un barrido diario daría unas 400 a 960 por mes, y SerpApi no cobra excedente por búsqueda: el siguiente escalón es el plan Starter (25 USD/mes, 1000 búsquedas), que pasa el tope de ~20 USD. Por eso el default es `rate(4 days)` (variable `scrape_schedule_expression`); más de una ruta pide espaciarlo más o achicar la grilla de fechas.
 
 ## Infra (`infra/`)
 
@@ -90,3 +90,7 @@ Se investigaron varias alternativas antes de elegir SerpApi: Duffel (cubre AR pe
 ## Licencia
 
 [MIT](./LICENSE)
+
+## Sobre el desarrollo
+
+Desarrollado con Claude Code como asistente de IA. Las decisiones de arquitectura, seguridad y costos, y la revisión del código, son mías.
